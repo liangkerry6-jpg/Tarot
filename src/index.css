@@ -91,6 +91,11 @@ html, body {
   animation-delay: -5s;
 }
 
+/* Prevent accidental zoom on touch interactions */
+a, button, [data-card-id] {
+  touch-action: manipulation;
+}
+
 /* Typewriter cursor */
 @keyframes blink {
   0%, 50% { opacity: 1; }

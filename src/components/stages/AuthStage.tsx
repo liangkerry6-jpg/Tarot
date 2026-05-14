@@ -1,96 +1,20 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
-import type { InteractionMode } from '../../App';
 
 interface AuthStageProps {
   onAuthSuccess: () => void;
-  isLoading: boolean;
-  error: string | null;
-  interactionMode: InteractionMode;
-  cursorX?: number;
-  cursorY?: number;
-  isHandDetected?: boolean;
 }
 
-const GESTURE_HOVER_DURATION = 2000;
-const EXIT_DEBOUNCE = 300;
-
-export function AuthStage({ onAuthSuccess, isLoading, error, interactionMode, cursorX = 0, cursorY = 0, isHandDetected = false }: AuthStageProps) {
+export function AuthStage({ onAuthSuccess }: AuthStageProps) {
   const { t } = useTranslation();
   const [hasClicked, setHasClicked] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [gestureProgress, setGestureProgress] = useState(0);
-  const hoverStartRef = useRef<number | null>(null);
-  const exitTimeRef = useRef<number | null>(null);
-  const savedProgressRef = useRef(0);
-
-  const isGesture = interactionMode === 'gesture';
 
   const handleBegin = useCallback(() => {
     setHasClicked(true);
     onAuthSuccess();
   }, [onAuthSuccess]);
-
-  // Gesture mode: collision detection for hover-to-click
-  const checkCollision = useCallback(() => {
-    if (!isGesture || !isHandDetected || hasClicked) {
-      setGestureProgress(0);
-      hoverStartRef.current = null;
-      exitTimeRef.current = null;
-      savedProgressRef.current = 0;
-      return;
-    }
-
-    const el = buttonRef.current;
-    if (!el) return;
-
-    const rect = el.getBoundingClientRect();
-    const isHovering =
-      cursorX >= rect.left && cursorX <= rect.right &&
-      cursorY >= rect.top && cursorY <= rect.bottom;
-
-    if (isHovering) {
-      if (exitTimeRef.current !== null) {
-        const timeSinceExit = Date.now() - exitTimeRef.current;
-        if (timeSinceExit < EXIT_DEBOUNCE) {
-          hoverStartRef.current = Date.now() - savedProgressRef.current * GESTURE_HOVER_DURATION;
-        }
-        exitTimeRef.current = null;
-      }
-
-      if (hoverStartRef.current === null) {
-        hoverStartRef.current = Date.now();
-      }
-
-      const elapsed = Date.now() - (hoverStartRef.current || 0);
-      const progress = Math.min(elapsed / GESTURE_HOVER_DURATION, 1);
-      setGestureProgress(progress);
-      savedProgressRef.current = progress;
-
-      if (progress >= 1) {
-        handleBegin();
-      }
-    } else if (hoverStartRef.current !== null) {
-      if (exitTimeRef.current === null) {
-        exitTimeRef.current = Date.now();
-      } else if (Date.now() - exitTimeRef.current >= EXIT_DEBOUNCE) {
-        setGestureProgress(0);
-        hoverStartRef.current = null;
-        exitTimeRef.current = null;
-        savedProgressRef.current = 0;
-      }
-    }
-  }, [cursorX, cursorY, isHandDetected, hasClicked, isGesture, handleBegin]);
-
-  useEffect(() => {
-    if (!isGesture) return;
-    const interval = setInterval(checkCollision, 16);
-    return () => clearInterval(interval);
-  }, [checkCollision, isGesture]);
-
-  const isMouse = !isGesture;
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen px-4">
@@ -164,7 +88,7 @@ export function AuthStage({ onAuthSuccess, isLoading, error, interactionMode, cu
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.3 }}
-        className="text-3xl md:text-4xl font-bold text-goldAura text-center mb-4 tracking-wider"
+        className="text-xl md:text-4xl font-bold text-goldAura text-center mb-4 tracking-wider px-2"
         style={{ fontFamily: "'Cinzel', serif" }}
       >
         {t('authTitle')}
@@ -174,90 +98,40 @@ export function AuthStage({ onAuthSuccess, isLoading, error, interactionMode, cu
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.5 }}
-        className="text-goldAura/60 text-center mb-12 max-w-md"
+        className="text-goldAura/60 text-center mb-8 md:mb-12 max-w-md text-sm md:text-base px-4"
         style={{ fontFamily: "'Cinzel', serif" }}
       >
-        {isMouse ? t('authSubtitleMouse') : t('authSubtitle')}
+        {t('authSubtitleMouse')}
       </motion.p>
 
       <AnimatePresence mode="wait">
         {!hasClicked && (
           <motion.button
-            ref={buttonRef}
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ duration: 0.5, delay: 0.7 }}
-            whileHover={isMouse ? { scale: 1.05 } : undefined}
-            whileTap={isMouse ? { scale: 0.95 } : undefined}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleBegin}
-            disabled={isLoading}
             className="relative px-8 py-4 rounded-full
                        bg-gradient-to-r from-mysticPurple to-mysticPurple/80
                        border-2 border-goldAura/50
                        text-goldAura font-semibold tracking-widest
                        hover:border-goldAura hover:shadow-gold
                        transition-all duration-300
-                       disabled:opacity-50 disabled:cursor-not-allowed
                        overflow-hidden"
-            style={{
-              fontFamily: "'Cinzel', serif",
-              ...(isGesture && gestureProgress > 0 ? {
-                borderColor: `rgba(212,175,55,${0.5 + gestureProgress * 0.5})`,
-                boxShadow: `0 0 ${12 + gestureProgress * 24}px rgba(197,160,89,${0.15 + gestureProgress * 0.35})`,
-              } : {}),
-            }}
+            style={{ fontFamily: "'Cinzel', serif" }}
           >
             <span className="relative z-10">
-              {isLoading ? t('authPermissionRequest') : t('authButton')}
+              {t('authButton')}
             </span>
-            {/* Gesture charge-up fill */}
-            {isGesture && (
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-goldAura/20 transition-none pointer-events-none"
-                style={{ width: `${gestureProgress * 100}%` }}
-              />
-            )}
-            {/* Mouse mode subtle pulse */}
-            {isMouse && (
-              <motion.div
-                className="absolute inset-0 rounded-full bg-goldAura/20"
-                animate={{ opacity: [0.2, 0.4, 0.2] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            )}
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex items-center gap-3 mt-6"
-          >
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-              className="w-5 h-5 border-2 border-goldAura/30 border-t-goldAura rounded-full"
+              className="absolute inset-0 rounded-full bg-goldAura/20"
+              animate={{ opacity: [0.2, 0.4, 0.2] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
             />
-            <span className="text-goldAura/60 text-sm">{t('authPermissionRequest')}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="mt-6 p-4 rounded-lg bg-red-900/20 border border-red-500/30 text-red-400 text-center max-w-md"
-          >
-            {t('authPermissionDenied')}
-          </motion.div>
+          </motion.button>
         )}
       </AnimatePresence>
     </div>

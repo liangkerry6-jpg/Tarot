@@ -1,148 +1,77 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TarotCard } from '../../data/tarotData';
-import type { InteractionMode } from '../../App';
 
 interface DrawStageProps {
   availableCards: TarotCard[];
   selectedCards: { card: TarotCard; isReversed: boolean }[];
-  cursorX: number;
-  cursorY: number;
-  isHandDetected: boolean;
   onSelectCard: (card: TarotCard) => void;
-  onHoverProgress?: (progress: number) => void;
-  interactionMode: InteractionMode;
 }
 
-const HOVER_DURATION = 500;
-const SCALE_TARGET = 1.5;
-const EXIT_DEBOUNCE = 500;
-const ROWS = 4;
-const CARDS_PER_ROW = 20;
+function useResponsiveLayout() {
+  const [layout, setLayout] = useState({
+    cardsPerRow: 20,
+    rows: 4,
+    cardW: 56,
+    cardH: 74,
+    rowH: 78,
+    yOffset: -110,
+  });
+
+  useEffect(() => {
+    const update = () => {
+      const isMobile = window.innerWidth < 768;
+      if (isMobile) {
+        setLayout({ cardsPerRow: 6, rows: 13, cardW: 44, cardH: 58, rowH: 62, yOffset: 0 });
+      } else {
+        setLayout({ cardsPerRow: 20, rows: 4, cardW: 56, cardH: 74, rowH: 78, yOffset: -110 });
+      }
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return layout;
+}
 
 export function DrawStage({
-  availableCards, selectedCards, cursorX, cursorY,
-  isHandDetected,
-  onSelectCard, onHoverProgress,
-  interactionMode,
+  availableCards, selectedCards,
+  onSelectCard,
 }: DrawStageProps) {
   const { t } = useTranslation();
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [hoveredCardId, setHoveredCardId] = useState<number | null>(null);
-  const hoverStartTimeRef = useRef<number | null>(null);
-  const exitTimeRef = useRef<number | null>(null);
-  const savedProgressRef = useRef<number>(0);
+  const { cardsPerRow, rows, cardW, cardH, rowH, yOffset } = useResponsiveLayout();
 
   const positionLabels = [t('positionPast'), t('positionPresent'), t('positionFuture')];
 
-  const isGesture = interactionMode === 'gesture';
   const selectedIds = new Set(selectedCards.map(sc => sc.card.id));
-  const displayCards = availableCards.filter(c => !selectedIds.has(c.id)).slice(0, ROWS * CARDS_PER_ROW);
 
-  // Mouse mode: click handler
-  const handleMouseClick = useCallback((card: TarotCard) => {
-    if (!isGesture) {
-      onSelectCard(card);
-    }
-  }, [isGesture, onSelectCard]);
-
-  // Gesture mode: elementFromPoint collision with debounced exit
-  const checkCollision = useCallback(() => {
-    if (!isGesture || !isHandDetected) {
-      setHoveredCardId(null); hoverStartTimeRef.current = null;
-      exitTimeRef.current = null;
-      savedProgressRef.current = 0;
-      onHoverProgress?.(0);
-      return;
-    }
-
-    const el = document.elementFromPoint(cursorX, cursorY);
-    let cardId: number | null = null;
-
-    if (el) {
-      let target: Element | null = el;
-      while (target && !target.hasAttribute('data-card-id')) {
-        target = target.parentElement;
-      }
-      if (target) {
-        cardId = parseInt(target.getAttribute('data-card-id')!, 10);
-      }
-    }
-
-    if (cardId !== null && !selectedIds.has(cardId)) {
-      // Clear exit debounce
-      if (exitTimeRef.current !== null) {
-        const timeSinceExit = Date.now() - exitTimeRef.current;
-        if (timeSinceExit < EXIT_DEBOUNCE) {
-          hoverStartTimeRef.current = Date.now() - savedProgressRef.current * HOVER_DURATION;
-        }
-        exitTimeRef.current = null;
-      }
-
-      if (hoveredCardId !== cardId) {
-        setHoveredCardId(cardId);
-        hoverStartTimeRef.current = Date.now();
-        savedProgressRef.current = 0;
-        onHoverProgress?.(0);
-      } else {
-        const elapsed = Date.now() - (hoverStartTimeRef.current || 0);
-        const progress = Math.min(elapsed / HOVER_DURATION, 1);
-        savedProgressRef.current = progress;
-        onHoverProgress?.(progress);
-
-        if (progress >= 1) {
-          const card = displayCards.find(c => c.id === cardId);
-          if (card) onSelectCard(card);
-          setHoveredCardId(null);
-          hoverStartTimeRef.current = null;
-          exitTimeRef.current = null;
-          savedProgressRef.current = 0;
-          onHoverProgress?.(0);
-        }
-      }
-    } else {
-      // No valid card — exit debounce
-      if (hoveredCardId !== null) {
-        if (exitTimeRef.current === null) {
-          exitTimeRef.current = Date.now();
-        } else if (Date.now() - exitTimeRef.current >= EXIT_DEBOUNCE) {
-          setHoveredCardId(null);
-          hoverStartTimeRef.current = null;
-          exitTimeRef.current = null;
-          savedProgressRef.current = 0;
-          onHoverProgress?.(0);
-        }
-      }
-    }
-  }, [cursorX, cursorY, isHandDetected, displayCards, selectedIds, hoveredCardId, onSelectCard, onHoverProgress, isGesture]);
-
-  useEffect(() => {
-    if (!isGesture) return;
-    const interval = setInterval(checkCollision, 16);
-    return () => clearInterval(interval);
-  }, [checkCollision, isGesture]);
+  const handleClick = useCallback((card: TarotCard) => {
+    onSelectCard(card);
+  }, [onSelectCard]);
 
   const getRowLayout = (index: number) => {
-    const row = Math.floor(index / CARDS_PER_ROW);
-    const col = index % CARDS_PER_ROW;
-    const totalInRow = Math.min(CARDS_PER_ROW, displayCards.length - row * CARDS_PER_ROW);
-    const cardW = 56;
+    const row = Math.floor(index / cardsPerRow);
+    const col = index % cardsPerRow;
+    const totalInRow = cardsPerRow;
     const gap = 3;
     const rowWidth = totalInRow * (cardW + gap);
     const startX = -rowWidth / 2;
     return {
       x: startX + col * (cardW + gap),
-      y: row * 78 - 110,
+      y: row * rowH + yOffset,
       zIndex: row * 100 + col,
     };
   };
 
+  const gridHeight = rows * rowH + Math.abs(yOffset) + cardH;
+
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-screen px-4 py-4">
+    <div className="relative flex flex-col items-center justify-center min-h-screen px-2 md:px-4 py-2 md:py-4">
       <motion.h2
         initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        className="text-xl md:text-2xl font-bold text-goldAura text-center mb-1 tracking-wider"
+        className="text-lg md:text-2xl font-bold text-goldAura text-center mb-1 tracking-wider"
         style={{ fontFamily: "'Cinzel', serif" }}
       >
         {t('drawTitle')}
@@ -150,25 +79,24 @@ export function DrawStage({
 
       <motion.p
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-        className="text-goldAura/60 text-center mb-3 text-sm"
+        className="text-goldAura/60 text-center mb-2 md:mb-3 text-xs md:text-sm"
         style={{ fontFamily: "'Cinzel', serif" }}
       >
         {t('drawProgress', { count: selectedCards.length })}
       </motion.p>
 
       {/* Selection slots */}
-      <div className="flex gap-6 md:gap-10 mb-6 pointer-events-none">
+      <div className="flex gap-3 md:gap-10 mb-4 md:mb-6 pointer-events-none">
         {[0, 1, 2].map((slotIndex) => (
           <motion.div
             key={slotIndex}
-            className="relative w-28 h-40 md:w-32 md:h-48 rounded-lg border-2 border-dashed border-goldAura/30
+            className="relative w-20 h-28 md:w-32 md:h-48 rounded-lg border-2 border-dashed border-goldAura/30
                        flex flex-col items-center justify-center bg-mysticPurple/20 pointer-events-auto"
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1 + slotIndex * 0.1 }}
           >
-            {/* Position label — watermark at bottom of slot */}
-            <span className="absolute bottom-3 left-0 right-0 text-center text-goldAura/40 text-[11px] font-bold tracking-widest z-0 pointer-events-none">
+            <span className="absolute bottom-2 md:bottom-3 left-0 right-0 text-center text-goldAura/40 text-[10px] md:text-[11px] font-bold tracking-widest z-0 pointer-events-none">
               {positionLabels[slotIndex]}
             </span>
             {selectedCards[slotIndex] ? (
@@ -226,35 +154,40 @@ export function DrawStage({
       </div>
 
       {/* Cards grid */}
-      <div className="relative w-full max-w-[1400px] h-[340px] flex items-center justify-center overflow-hidden">
+      <div
+        className="relative w-full max-w-[1400px] flex items-center justify-center overflow-visible"
+        style={{ height: gridHeight }}
+      >
         <AnimatePresence>
-          {displayCards.map((card, index) => {
+          {availableCards.slice(0, rows * cardsPerRow).map((card, index) => {
+            if (selectedIds.has(card.id)) return null;
             const layout = getRowLayout(index);
-            const isHovered = hoveredCardId === card.id;
 
             return (
               <motion.div
                 key={card.id}
-                ref={(el) => { cardRefs.current[index] = el; }}
                 data-card-id={card.id}
-                className={`absolute w-[54px] h-[74px] rounded-md ${isGesture ? 'cursor-default' : 'cursor-pointer'}`}
+                className="absolute rounded-md cursor-pointer"
+                style={{
+                  width: cardW,
+                  height: cardH,
+                  touchAction: 'manipulation',
+                }}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{
                   x: layout.x,
                   y: layout.y,
-                  scale: isHovered ? SCALE_TARGET : 1,
+                  scale: 1,
                   opacity: 1,
-                  zIndex: isHovered ? 9999 : layout.zIndex,
+                  zIndex: layout.zIndex,
                 }}
                 exit={{ scale: 0, opacity: 0 }}
-                transition={{ default: { duration: 0.4 }, scale: { duration: HOVER_DURATION / 1000, ease: "circOut" } }}
-                onClick={() => handleMouseClick(card)}
+                transition={{ duration: 0.4 }}
+                onClick={() => handleClick(card)}
               >
-                <div className={`relative w-full h-full rounded-md border overflow-hidden
+                <div className="relative w-full h-full rounded-md border overflow-hidden
                              bg-gradient-to-br from-mysticPurple to-darkSpace
-                             ${isHovered ? 'border-goldAura shadow-lg' : 'border-goldAura/20'}
-                             ${!isGesture ? 'hover:border-goldAura/60 hover:scale-110 transition-transform' : ''}`}>
-                  {/* Card back miniature — Sun SVG */}
+                             border-goldAura/20 hover:border-goldAura/60 hover:scale-110 transition-transform">
                   <div className="w-full h-full flex items-center justify-center relative">
                     <div className="absolute inset-1 rounded border border-[#D4AF37]/30" />
                     <div className="absolute inset-2 rounded border border-[#D4AF37]/10" />
@@ -288,10 +221,10 @@ export function DrawStage({
 
       <motion.p
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-        className="text-goldAura/40 text-xs text-center mt-4"
+        className="text-goldAura/40 text-[10px] md:text-xs text-center mt-2 md:mt-4"
         style={{ fontFamily: "'Cinzel', serif" }}
       >
-        {isGesture ? t('drawInstruction') : t('drawInstructionMouse')}
+        {t('drawInstructionMouse')}
       </motion.p>
     </div>
   );

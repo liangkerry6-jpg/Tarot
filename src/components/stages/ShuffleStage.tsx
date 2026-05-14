@@ -2,17 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { tarotCards } from '../../data/tarotData';
-import type { CircleDirection } from '../../hooks/useHandTracking';
-import type { InteractionMode } from '../../App';
 
 interface ShuffleStageProps {
-  isPointing: boolean;
-  isCircling: boolean;
-  circleDirection: CircleDirection;
-  isStationary: boolean;
-  stationaryDuration: number;
   onShuffleComplete: () => void;
-  interactionMode: InteractionMode;
 }
 
 type ShufflePhase = 'idle' | 'shuffling' | 'stacking' | 'spreading' | 'done';
@@ -50,20 +42,13 @@ function CardBack() {
   );
 }
 
-export function ShuffleStage({
-  isPointing: _isPointing, isCircling, circleDirection, isStationary, stationaryDuration: _stationaryDuration,
-  onShuffleComplete, interactionMode,
-}: ShuffleStageProps) {
+export function ShuffleStage({ onShuffleComplete }: ShuffleStageProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<ShufflePhase>('idle');
-  const [hasMetMinimumShuffle, setHasMetMinimumShuffle] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const stackingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spreadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const circlingStartRef = useRef<number | null>(null);
-
-  const isMouse = interactionMode === 'mouse';
 
   // Fail-safe: once transitioning, guarantee onShuffleComplete fires
   useEffect(() => {
@@ -74,44 +59,10 @@ export function ShuffleStage({
     return () => clearTimeout(timer);
   }, [isTransitioning, onShuffleComplete]);
 
-  // Circling timer: track 2-second minimum
-  useEffect(() => {
-    if (isMouse || isTransitioning) return;
-    if (isCircling && phase === 'shuffling') {
-      if (circlingStartRef.current === null) {
-        circlingStartRef.current = Date.now();
-      }
-      const interval = setInterval(() => {
-        const elapsed = Date.now() - (circlingStartRef.current || 0);
-        if (elapsed >= 2000) {
-          setHasMetMinimumShuffle(true);
-        }
-      }, 100);
-      return () => clearInterval(interval);
-    } else if (!isCircling) {
-      circlingStartRef.current = null;
-    }
-  }, [isCircling, phase, isMouse, isTransitioning]);
-
-  // Gesture-driven phase transitions
-  useEffect(() => {
-    if (isMouse || isTransitioning) return;
-    if (isCircling && phase === 'idle') {
-      setPhase('shuffling');
-    }
-    if (!isCircling && phase === 'shuffling' && hasMetMinimumShuffle) {
-      setPhase('stacking');
-      setIsTransitioning(true);
-      setHasMetMinimumShuffle(false);
-      circlingStartRef.current = null;
-    }
-  }, [isCircling, phase, isMouse, hasMetMinimumShuffle, isTransitioning]);
-
   // Mouse mode: click-to-shuffle
   const handleMouseShuffle = useCallback(() => {
-    if (!isMouse || phase !== 'idle') return;
+    if (phase !== 'idle') return;
     setPhase('shuffling');
-    // Simulate the shuffle → stack → spread progression
     stackingTimerRef.current = setTimeout(() => setPhase('stacking'), 1800);
     const t2 = setTimeout(() => setPhase('spreading'), 2600);
     const t3 = setTimeout(() => {
@@ -122,7 +73,7 @@ export function ShuffleStage({
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [isMouse, phase, onShuffleComplete]);
+  }, [phase, onShuffleComplete]);
 
   // stacking → spreading (800ms)
   useEffect(() => {
@@ -146,8 +97,7 @@ export function ShuffleStage({
 
   const getCardPosition = useCallback((index: number, total: number, currentPhase: ShufflePhase) => {
     if (currentPhase === 'shuffling') {
-      const dir = circleDirection === 'counterclockwise' ? -1 : 1;
-      const angleDeg = (index * 360) / total + dir * ((Date.now() / 20) % 360);
+      const angleDeg = (index * 360) / total + ((Date.now() / 20) % 360);
       const radius = 140 + (index % 7) * 14 + Math.sin(index * 0.7) * 20;
       const heightSpread = 60 + (index % 5) * 10;
       return {
@@ -175,7 +125,7 @@ export function ShuffleStage({
       };
     }
     return { x: 0, y: 0, rotate: 0, scale: 1 };
-  }, [circleDirection]);
+  }, []);
 
   const displayCards = ALL_CARDS.slice(0, DISPLAY_COUNT);
 
@@ -190,24 +140,16 @@ export function ShuffleStage({
            style={{ fontFamily: "'Cinzel', serif" }}>
           {isTransitioning
             ? t('shuffleComplete')
-            : isMouse
-            ? (phase === 'shuffling'
-              ? t('shuffleInProgress')
-              : phase === 'stacking' || phase === 'spreading'
-              ? t('shuffleComplete')
-              : t('authSubtitleMouse'))
-            : (!isCircling && !hasMetMinimumShuffle
-              ? t('shuffleInstruction')
-              : isCircling && !hasMetMinimumShuffle
-              ? t('shuffleKeepGoing')
-              : isCircling && hasMetMinimumShuffle
-              ? t('shuffleStopHint')
-              : t('shuffleComplete'))}
+            : phase === 'shuffling'
+            ? t('shuffleInProgress')
+            : phase === 'stacking' || phase === 'spreading'
+            ? t('shuffleComplete')
+            : t('authSubtitleMouse')}
         </p>
       </motion.div>
 
       {/* Cards container */}
-      <div className="relative w-[700px] h-[400px] md:w-[850px] md:h-[480px] flex items-center justify-center">
+      <div className="relative w-full max-w-[700px] md:max-w-[850px] h-[320px] md:h-[480px] flex items-center justify-center overflow-visible">
         <AnimatePresence>
           {displayCards.map((card, index) => {
             const pos = getCardPosition(index, displayCards.length, phase);
@@ -240,8 +182,8 @@ export function ShuffleStage({
         </AnimatePresence>
       </div>
 
-      {/* Mouse mode: shuffle button */}
-      {isMouse && phase === 'idle' && !isTransitioning && (
+      {/* Shuffle button */}
+      {phase === 'idle' && !isTransitioning && (
         <div className="absolute bottom-20 left-0 right-0 flex justify-center">
           <motion.button
             initial={{ opacity: 0, y: 20 }}
@@ -259,30 +201,6 @@ export function ShuffleStage({
             {t('shuffleButton')}
           </motion.button>
         </div>
-      )}
-
-      {/* Gesture hints (gesture mode only) */}
-      {!isMouse && phase !== 'done' && !isTransitioning && (
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 0.5 }}
-          className="absolute bottom-10 left-0 right-0 flex justify-center"
-        >
-          <div className="flex items-center gap-8">
-          <div className={`flex items-center gap-1.5 transition-opacity duration-500 ${isCircling ? 'opacity-100' : 'opacity-30'}`}>
-            <span className="text-goldAura/50 text-base">↻</span>
-            <span className="text-goldAura/30 text-xs tracking-widest">
-              {t('gestureCircleHint')}
-            </span>
-          </div>
-          <div className="text-goldAura/15 text-xs">|</div>
-          <div className={`flex items-center gap-1.5 transition-opacity duration-500 ${isStationary && hasMetMinimumShuffle ? 'opacity-100' : 'opacity-30'}`}>
-            <span className="text-goldAura/50 text-base">⊙</span>
-            <span className="text-goldAura/30 text-xs tracking-widest">
-              {t('gestureStationaryHint')}
-            </span>
-          </div>
-          </div>
-        </motion.div>
       )}
     </div>
   );
